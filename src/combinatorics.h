@@ -2,10 +2,16 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cstdio>
+#include <cassert>
 #include <cstddef>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -17,9 +23,21 @@ constexpr unsigned char bnml = 252;          // C(10, 5)
 constexpr unsigned char bnml_nm1 = 126;      // C(9, 5)
 constexpr unsigned char bnml_nm1_rm1 = 126;  // C(9, 4)
 
-inline unsigned char
-    P[30240][252];  // representatives (an ordered choice of r first elements)
-inline unsigned char T[120][252];  // relative transpositions of representatives
+#if 0
+// representatives (an ordered choice of r first elements)
+inline unsigned char P[30240][252];
+// relative transpositions of representatives
+inline unsigned char T[120][252];
+
+inline size_t r_set_to_perm_reps[30240];  // all perm_reps, grouped by r_set
+#else
+
+inline unsigned char (*P)[252] = nullptr;
+inline unsigned char (*T)[252] = nullptr;
+inline size_t* r_set_to_perm_reps = nullptr;
+
+#endif
+
 
 // f[i] = (i - 1)!
 constexpr size_t f[11] = {0, 1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880};
@@ -29,8 +47,6 @@ constexpr unsigned char C_r[12] = {252, 126, 56, 21, 6, 1, 0, 0, 0, 0, 0, 0};
 
 inline unsigned char set_to_index[1024];  // set from C([n], r) to index
 inline bitset<N> index_to_set[252];       // index to set from C([n], r)
-
-inline size_t r_set_to_perm_reps[30240];  // all perm_reps, grouped by r_set
 
 template <size_t N>
 struct CoLexComparator {
@@ -88,7 +104,7 @@ inline size_t binomial(size_t n, size_t k) {
     return res;
 }
 
-inline void initialize_combinatorics() {
+inline void initialize_combinatorics_mappings() {
     // Initialize mappings between indices and sets
     unsigned char j = 0;
     for (bitset<N> C : combinations<N>(N, R)) {
@@ -97,7 +113,9 @@ inline void initialize_combinatorics() {
     for (unsigned char i = 0; i < bnml; ++i) {
         set_to_index[index_to_set[i].to_ulong()] = i;
     }
+}
 
+inline void initialize_combinatorics_tables() {
     auto apply_perm = [&](vector<size_t> perm,
                           unsigned char j) -> unsigned char {
         bitset<N> transformed_set;
@@ -140,4 +158,33 @@ inline void initialize_combinatorics() {
         }
         ++i;
     } while (next_permutation(perm.begin(), perm.end()));
+}
+
+inline void save_combinatorics(const std::string &filename) {
+  FILE* f = fopen(filename.c_str(), "wb");
+  assert(f != nullptr);
+  fwrite(P, 1, sizeof(P), f);
+  fwrite(T, 1, sizeof(T), f);
+  fwrite(r_set_to_perm_reps, 1, sizeof(r_set_to_perm_reps), f);
+  fclose(f);
+}
+
+inline void load_combinatorics(const std::string &filename) {
+  int fd = open(filename.c_str(), O_RDONLY);
+
+    // Total size of P + T + r_set_to_perm_reps
+    size_t total_size = (30240 * 252) + (120 * 252) + (30240 * sizeof(size_t));
+
+    void* shared_mem = mmap(nullptr, total_size, PROT_READ, MAP_SHARED, fd, 0);
+
+    // Assign pointers to the correct offsets in the shared memory block
+    unsigned char* base = static_cast<unsigned char*>(shared_mem);
+
+    P = reinterpret_cast<unsigned char(*)[252]>(base);
+    base += (30240 * 252);
+
+    T = reinterpret_cast<unsigned char(*)[252]>(base);
+    base += (120 * 252);
+
+    r_set_to_perm_reps = reinterpret_cast<size_t*>(base);
 }

@@ -62,9 +62,12 @@ int main(int argc, char* argv[]) {
         right_lim--;
     }
 
+    fprintf(stderr, "Init...\n");
     // Initialize mappings between indices and sets,
     // and fill permutation array of size n! * C(n, r)
-    initialize_combinatorics();
+    initialize_combinatorics_mappings();
+    std::string combinatorics_file = repo_root + "/table/comb.bin";
+    load_combinatorics(combinatorics_file);
 
     // Process IC_nm1
     for (size_t i = 0; i < right_lim - left_lim; ++i) {
